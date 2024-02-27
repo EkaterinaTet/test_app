@@ -29,7 +29,7 @@ async function fetchData(action, params = {}) {
   } catch (error) {
     console.error("Ошибка при выполнении запроса:", error);
     // Повторный запрос при ошибке
-    return fetchData(action, params);
+    // return fetchData(action, params);
   }
 }
 // Функция для получения списка ID товаров и лимит
