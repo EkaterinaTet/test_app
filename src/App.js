@@ -18,7 +18,7 @@ async function fetchData(action, params = {}) {
 
   try {
     const response = await fetch(
-      "http://api.valantis.store:40000/",
+      "https://api.valantis.store:41000/",
       requestOptions
     );
     if (!response.ok) {
@@ -80,12 +80,34 @@ async function fetchPrice() {
     return [];
   }
 }
-
 //фильтрация по цене
 async function filterPrice(price) {
   try {
     const response = await fetchData("filter", {
       price,
+    });
+    return response;
+  } catch (err) {
+    console.error("Ошибка при фильтрации", err);
+    return [];
+  }
+}
+
+//получаю все названия
+async function fetchProductName() {
+  try {
+    const product = await getFields("product");
+    return product;
+  } catch (err) {
+    console.error("Ошибка при получении названия", err);
+    return [];
+  }
+}
+//фильтрация по названию
+async function filterProductName(product) {
+  try {
+    const response = await fetchData("filter", {
+      product,
     });
     return response;
   } catch (err) {
@@ -106,11 +128,13 @@ function App() {
   const [selectedBrands, setSelectedBrands] = useState(""); // состояние для избран брендов
   const [availableBrands, setAvailableBrands] = useState([]); // состояние для доступных брендов
 
+  const [valuePrice, setValuePrice] = useState(""); //цена
   const [availablePrices, setAvailablePrices] = useState([]); // состояние для доступных цен
 
-  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(""); // Состояние для хранения поискового запроса
+  const [filteredProductsName, setFilteredProductsName] = useState([]); // Состояние для хранения отфильтрованных товаров
 
-  const [valuePrice, setValuePrice] = useState(""); //цена
+  const [loading, setLoading] = useState(false);
 
   const pageCount = 10; //кол-во стр в пагинации
   const pageSize = 50; //кол-во товаров на стр
@@ -167,7 +191,7 @@ function App() {
             unProducts.push(product);
           }
         });
-        // setAllProducts(unProducts); //сохраняю все товары
+
         setProducts(unProducts); //обновляю текущ товары для отображения
 
         setLoading(false);
@@ -182,11 +206,15 @@ function App() {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const brands = await fetchBrands();
+        const brands = await fetchBrands(); // Загрузка доступных брендов
         setAvailableBrands(brands);
 
         const prices = await fetchPrice(); // Загрузка доступных цен
         setAvailablePrices(prices); // Сохранение полученных цен в состояние
+
+        const name = await fetchProductName(); //загрузка доступных названий
+        setFilteredProductsName(name);
+
         setLoading(false);
       } catch (err) {
         console.error("Ошибка при загрузке данных", err);
@@ -244,62 +272,36 @@ function App() {
     ? products.filter((product) => product.brand === selectedBrands)
     : products;
 
-  // const handleBrandChange = async (event) => {
-  //   const selectedBrand = event.target.value;
-  //   setSelectedBrands(selectedBrand);
-  //   if (selectedBrand !== "") {
-  //     setShowPagination(false);
-  //   } else {
-  //     setShowPagination(true);
-  //   }
-  //   try {
-  //     const filteredProducts = selectedBrand
-  //       ? allProducts.filter((product) => product.brand === selectedBrand)
-  //       : allProducts;
-
-  //     setProducts(filteredProducts.slice(0, pageSize)); //обрезаю список до максимум 50 товаров
-  //   } catch (error) {
-  //     console.error("Ошибка при загрузке товаров:", error);
-  //   }
-  // };
   const handleBrandChange = async (event) => {
     const selectedBrand = event.target.value;
     setSelectedBrands(selectedBrand);
-
-    if (selectedBrand !== "") {
-      // Если выбран конкретный бренд, применяем фильтрацию по бренду
-      const filteredProducts = allProducts.filter(
-        (product) => product.brand === selectedBrand
-      );
-
-      // Применяем дополнительную фильтрацию по цене, если выбрана цена
-      if (valuePrice !== "") {
-        const priceNumber = parseFloat(valuePrice);
-        if (!isNaN(priceNumber)) {
-          const filteredByPrice = await filterPrice(priceNumber);
-          const filteredByPriceProducts = await getProducts(filteredByPrice);
-          // Применяем дополнительную фильтрацию по цене
-          setProducts(
-            filteredByPriceProducts.filter((product) =>
-              filteredProducts.some(
-                (filteredProduct) => filteredProduct.id === product.id
-              )
-            )
-          );
-        } else {
-          console.warn("Цена должна быть числом");
-        }
+    // Фильтрация товаров по бренду и названию
+    const filteredByBrandAndName = allProducts.filter(
+      (product) =>
+        (selectedBrand === "" || product.brand === selectedBrand) && // Фильтрация по бренду
+        product.product.toLowerCase().includes(searchQuery.toLowerCase()) // Фильтрация по названию
+    );
+    // Применение фильтрации по цене, если выбрана
+    if (valuePrice !== "") {
+      const priceNumber = parseFloat(valuePrice);
+      if (!isNaN(priceNumber)) {
+        const filteredByPrice = await filterPrice(priceNumber); // Фильтрация по цене
+        const filteredByPriceProducts = await getProducts(filteredByPrice);
+        // Применение дополнительной фильтрации по цене
+        const productsToShow = filteredByPriceProducts.filter((product) =>
+          filteredByBrandAndName.some(
+            (filteredProduct) => filteredProduct.id === product.id
+          )
+        );
+        setProducts(productsToShow);
       } else {
-        // Если цена не выбрана, применяем только фильтрацию по бренду
-        setProducts(filteredProducts);
+        console.warn("Цена должна быть числом");
       }
-
-      setShowPagination(false);
     } else {
-      // Если выбрана опция "Все бренды", отображаем все товары без фильтрации
-      setShowPagination(true);
-      setProducts(allProducts.slice(0, pageSize));
+      // Если цена не выбрана, применяю только фильтрацию по бренду и названию
+      setProducts(filteredByBrandAndName);
     }
+    setShowPagination(false);
   };
 
   const handleFilterPrice = async () => {
@@ -309,26 +311,53 @@ function App() {
       if (!isNaN(price)) {
         // Фильтрую товары по цене
         const filteredIds = await filterPrice(price);
-
         const filteredProducts = await getProducts(filteredIds);
-        console.log(filteredProducts);
+        // Применение дополнительной фильтрации по бренду, если выбран
+        const productsToShow = filteredProducts.filter(
+          (product) => selectedBrands === "" || product.brand === selectedBrands
+        );
         // Устанавливаю отфильтрованные товары
-        setProducts(filteredProducts);
+        setProducts(productsToShow);
       }
-
       setLoading(false);
+      setShowPagination(false); // Скрыть пагинацию
     } catch (error) {
       console.error("Ошибка при фильтрации товаров по цене:", error);
       setLoading(false);
     }
   };
 
+  const handleFilterProduct = async () => {
+    const lowercaseQuery = searchQuery.toLowerCase();
+    let filtered = allProducts.filter(
+      (product) =>
+        product.product.toLowerCase().includes(lowercaseQuery) &&
+        (selectedBrands === "" || product.brand === selectedBrands)
+    );
+    // Применение фильтрации по цене, если цена выбрана
+    if (valuePrice !== "") {
+      const price = parseFloat(valuePrice);
+      if (!isNaN(price)) {
+        const filteredIds = await filterPrice(price);
+        const filteredByPriceProducts = await getProducts(filteredIds);
+        // Применение дополнительной фильтрации по цене
+        filtered = filteredByPriceProducts.filter((product) =>
+          filtered.some((filteredProduct) => filteredProduct.id === product.id)
+        );
+      } else {
+        console.warn("Цена должна быть числом");
+      }
+    }
+    setProducts(filtered.slice(0, pageSize));
+    setShowPagination(false); // Скрыть пагинацию
+  };
+
   const handleResetFilters = () => {
     setSelectedBrands(""); // Сброс выбранного бренда
     setValuePrice(""); // Сброс выбранной цены
+    setSearchQuery(""); //сброс названия
     setShowPagination(true); // Вернуть пагинацию
     setCurrentPage(1); // Вернуться на первую страницу
-
     // Обновить список товаров на странице в соответствии с первоначальными данными
     setProducts(allProducts.slice(0, pageSize));
   };
@@ -363,6 +392,19 @@ function App() {
           />
 
           <button onClick={handleFilterPrice}> Применить</button>
+        </div>
+      </div>
+
+      <div>
+        <h2>Поиск по названию:</h2>
+        <div>
+          <input
+            type="text"
+            placeholder="Введите название товара"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          <button onClick={handleFilterProduct}>Найти</button>
         </div>
       </div>
 
