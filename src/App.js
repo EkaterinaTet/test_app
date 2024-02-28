@@ -65,30 +65,34 @@ async function getFields(field) {
 async function fetchBrands() {
   try {
     const brands = await getFields("brand");
-    console.log("Доступные бренды - ", brands);
     return brands;
   } catch (err) {
     console.error("Ошибка при получении брендов", err);
   }
 }
+//получаю все цены
+async function fetchPrice() {
+  try {
+    const price = await getFields("price");
+    return price;
+  } catch (err) {
+    console.error("Ошибка при получении цен", err);
+    return [];
+  }
+}
 
-//загрузка всех товаров выбранного бренда из всего набора данных
-// const getProductsForBrand = async (brand) => {
-//   try {
-//     const allIds = await getProductIds(0, 9999); // Получаю все идентификаторы товаров
-//     const allProducts = await getProducts(allIds); // Получаем все товары
-
-//     // Фильтрую товары по выбранному бренду
-//     const productsForBrand = allProducts.filter(
-//       (product) => product.brand === brand
-//     );
-
-//     return productsForBrand;
-//   } catch (error) {
-//     console.error("Ошибка при загрузке товаров по бренду:", error);
-//     return [];
-//   }
-// };
+//фильтрация по цене
+async function filterPrice(price) {
+  try {
+    const response = await fetchData("filter", {
+      price,
+    });
+    return response;
+  } catch (err) {
+    console.error("Ошибка при фильтрации", err);
+    return [];
+  }
+}
 
 function App() {
   const [products, setProducts] = useState([]); //все товары
@@ -102,7 +106,11 @@ function App() {
   const [selectedBrands, setSelectedBrands] = useState(""); // состояние для избран брендов
   const [availableBrands, setAvailableBrands] = useState([]); // состояние для доступных брендов
 
+  const [availablePrices, setAvailablePrices] = useState([]); // состояние для доступных цен
+
   const [loading, setLoading] = useState(false);
+
+  const [valuePrice, setValuePrice] = useState(""); //цена
 
   const pageCount = 10; //кол-во стр в пагинации
   const pageSize = 50; //кол-во товаров на стр
@@ -173,8 +181,17 @@ function App() {
 
   useEffect(() => {
     const fetchInitialData = async () => {
-      const brands = await fetchBrands();
-      setAvailableBrands(brands);
+      try {
+        const brands = await fetchBrands();
+        setAvailableBrands(brands);
+
+        const prices = await fetchPrice(); // Загрузка доступных цен
+        setAvailablePrices(prices); // Сохранение полученных цен в состояние
+        setLoading(false);
+      } catch (err) {
+        console.error("Ошибка при загрузке данных", err);
+        setLoading(false);
+      }
     };
     fetchInitialData();
   }, []);
@@ -227,34 +244,102 @@ function App() {
     ? products.filter((product) => product.brand === selectedBrands)
     : products;
 
-  // const handleBrandChange = (event) => {
-  //   setSelectedBrands(event.target.value);
-  // };
+  // const handleBrandChange = async (event) => {
+  //   const selectedBrand = event.target.value;
+  //   setSelectedBrands(selectedBrand);
+  //   if (selectedBrand !== "") {
+  //     setShowPagination(false);
+  //   } else {
+  //     setShowPagination(true);
+  //   }
+  //   try {
+  //     const filteredProducts = selectedBrand
+  //       ? allProducts.filter((product) => product.brand === selectedBrand)
+  //       : allProducts;
 
+  //     setProducts(filteredProducts.slice(0, pageSize)); //обрезаю список до максимум 50 товаров
+  //   } catch (error) {
+  //     console.error("Ошибка при загрузке товаров:", error);
+  //   }
+  // };
   const handleBrandChange = async (event) => {
     const selectedBrand = event.target.value;
     setSelectedBrands(selectedBrand);
+
     if (selectedBrand !== "") {
+      // Если выбран конкретный бренд, применяем фильтрацию по бренду
+      const filteredProducts = allProducts.filter(
+        (product) => product.brand === selectedBrand
+      );
+
+      // Применяем дополнительную фильтрацию по цене, если выбрана цена
+      if (valuePrice !== "") {
+        const priceNumber = parseFloat(valuePrice);
+        if (!isNaN(priceNumber)) {
+          const filteredByPrice = await filterPrice(priceNumber);
+          const filteredByPriceProducts = await getProducts(filteredByPrice);
+          // Применяем дополнительную фильтрацию по цене
+          setProducts(
+            filteredByPriceProducts.filter((product) =>
+              filteredProducts.some(
+                (filteredProduct) => filteredProduct.id === product.id
+              )
+            )
+          );
+        } else {
+          console.warn("Цена должна быть числом");
+        }
+      } else {
+        // Если цена не выбрана, применяем только фильтрацию по бренду
+        setProducts(filteredProducts);
+      }
+
       setShowPagination(false);
     } else {
+      // Если выбрана опция "Все бренды", отображаем все товары без фильтрации
       setShowPagination(true);
+      setProducts(allProducts.slice(0, pageSize));
     }
-    try {
-      const filteredProducts = selectedBrand
-        ? allProducts.filter((product) => product.brand === selectedBrand)
-        : allProducts;
+  };
 
-      setProducts(filteredProducts.slice(0, pageSize)); //обрезаю список до максимум 50 товаров
+  const handleFilterPrice = async () => {
+    try {
+      setLoading(true);
+      const price = parseFloat(valuePrice);
+      if (!isNaN(price)) {
+        // Фильтрую товары по цене
+        const filteredIds = await filterPrice(price);
+
+        const filteredProducts = await getProducts(filteredIds);
+        console.log(filteredProducts);
+        // Устанавливаю отфильтрованные товары
+        setProducts(filteredProducts);
+      }
+
+      setLoading(false);
     } catch (error) {
-      console.error("Ошибка при загрузке товаров:", error);
+      console.error("Ошибка при фильтрации товаров по цене:", error);
+      setLoading(false);
     }
+  };
+
+  const handleResetFilters = () => {
+    setSelectedBrands(""); // Сброс выбранного бренда
+    setValuePrice(""); // Сброс выбранной цены
+    setShowPagination(true); // Вернуть пагинацию
+    setCurrentPage(1); // Вернуться на первую страницу
+
+    // Обновить список товаров на странице в соответствии с первоначальными данными
+    setProducts(allProducts.slice(0, pageSize));
   };
 
   return (
     <div>
       <h1>Список товаров</h1>
       <div>
-        <label htmlFor="brand">Выберите бренд:</label>
+        <label htmlFor="brand">
+          <h2>Выберите бренд:</h2>
+        </label>
         <select id="brand" value={selectedBrands} onChange={handleBrandChange}>
           <option value="">Все бренды</option>
           {availableBrands.map((brand, index) => (
@@ -264,6 +349,25 @@ function App() {
           ))}
         </select>
       </div>
+
+      <div>
+        {" "}
+        <h2>Напишите цену:</h2>
+        <div>
+          <input
+            onChange={(event) => {
+              setValuePrice(event.target.value);
+            }}
+            type="number"
+            value={valuePrice}
+          />
+
+          <button onClick={handleFilterPrice}> Применить</button>
+        </div>
+      </div>
+
+      <button onClick={handleResetFilters}>Сбросить все фильтры</button>
+      <br />
 
       {showPagination && (
         <button onClick={handlePrevPage} disabled={currentPage === 1}>
@@ -275,18 +379,22 @@ function App() {
       {showPagination && <button onClick={handleNextPage}>Вперед</button>}
 
       {loading ? (
-        <p>Загрузка...</p>
+        <p>Загрузка товаров...</p>
       ) : (
         <div className="product-list">
           <ul className="App_block">
-            {filteredProducts.map((product) => (
-              <li key={product.id} className="App_elem">
-                <p>{product.product}</p>
-                <p>{product.brand}</p>
-                <p>{product.id}</p>
-                <p>{product.price} ₽</p>
-              </li>
-            ))}
+            {filteredProducts && filteredProducts.length > 0 ? (
+              filteredProducts.map((product) => (
+                <li key={product.id} className="App_elem">
+                  <p>{product.product}</p>
+                  <p>{product.brand}</p>
+                  <p>{product.id}</p>
+                  <p>{product.price} ₽</p>
+                </li>
+              ))
+            ) : (
+              <p>Нет товаров для отображения</p>
+            )}
           </ul>
         </div>
       )}
