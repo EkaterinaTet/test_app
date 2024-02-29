@@ -104,17 +104,17 @@ async function fetchProductName() {
   }
 }
 //фильтрация по названию
-async function filterProductName(product) {
-  try {
-    const response = await fetchData("filter", {
-      product,
-    });
-    return response;
-  } catch (err) {
-    console.error("Ошибка при фильтрации", err);
-    return [];
-  }
-}
+// async function filterProductName(product) {
+//   try {
+//     const response = await fetchData("filter", {
+//       product,
+//     });
+//     return response;
+//   } catch (err) {
+//     console.error("Ошибка при фильтрации", err);
+//     return [];
+//   }
+// }
 
 function App() {
   const [products, setProducts] = useState([]); //все товары
@@ -135,6 +135,7 @@ function App() {
   const [filteredProductsName, setFilteredProductsName] = useState([]); // Состояние для хранения отфильтрованных товаров
 
   const [loading, setLoading] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false); //кнопка наверх
 
   const pageCount = 10; //кол-во стр в пагинации
   const pageSize = 50; //кол-во товаров на стр
@@ -224,6 +225,22 @@ function App() {
     fetchInitialData();
   }, []);
 
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 100) {
+        setShowScrollButton(true);
+      } else {
+        setShowScrollButton(false);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
   const handlePrevPage = () => {
     const newStartPage = startPage - pageCount;
     const newPage = currentPage - pageCount;
@@ -257,6 +274,7 @@ function App() {
     for (let i = startPage; i <= endPage; i++) {
       pagination.push(
         <button
+          className="paginator_num"
           key={i}
           onClick={() => handlePageClick(i)}
           disabled={i === currentPage}
@@ -348,7 +366,7 @@ function App() {
         console.warn("Цена должна быть числом");
       }
     }
-    setProducts(filtered.slice(0, pageSize));
+    setProducts(filtered);
     setShowPagination(false); // Скрыть пагинацию
   };
 
@@ -361,77 +379,97 @@ function App() {
     // Обновить список товаров на странице в соответствии с первоначальными данными
     setProducts(allProducts.slice(0, pageSize));
   };
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" }); // Прокрутка страницы вверх
+  };
 
   return (
-    <div>
+    <div className="App">
+      <button
+        className={`scrollToTop ${showScrollButton ? "visible" : ""}`}
+        onClick={scrollToTop}
+      >
+        ↑
+      </button>
+
       <h1>Список товаров</h1>
-      <div>
-        <label htmlFor="brand">
-          <h2>Выберите бренд:</h2>
-        </label>
-        <select id="brand" value={selectedBrands} onChange={handleBrandChange}>
-          <option value="">Все бренды</option>
-          {availableBrands.map((brand, index) => (
-            <option key={index} value={brand}>
-              {brand}
-            </option>
-          ))}
-        </select>
-      </div>
+      <div className="filters">
+        <div className="filter">
+          <label htmlFor="brand">
+            <h2>Выберите бренд:</h2>
+          </label>
+          <select
+            id="brand"
+            value={selectedBrands}
+            onChange={handleBrandChange}
+          >
+            <option value="">Все бренды</option>
+            {availableBrands.map((brand, index) => (
+              <option key={index} value={brand}>
+                {brand}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div>
-        {" "}
-        <h2>Напишите цену:</h2>
-        <div>
-          <input
-            onChange={(event) => {
-              setValuePrice(event.target.value);
-            }}
-            type="number"
-            value={valuePrice}
-          />
+        <div className="filter">
+          {" "}
+          <h2>Напишите цену:</h2>
+          <div>
+            <input
+              className="input_price"
+              onChange={(event) => {
+                setValuePrice(event.target.value);
+              }}
+              type="number"
+              value={valuePrice}
+            />
 
-          <button onClick={handleFilterPrice}> Применить</button>
+            <button onClick={handleFilterPrice}> Применить</button>
+          </div>
+        </div>
+
+        <div className="filter">
+          <h2>Поиск по названию:</h2>
+          <div>
+            <input
+              type="text"
+              placeholder="Введите название товара"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+            <button onClick={handleFilterProduct}>Применить</button>
+          </div>
         </div>
       </div>
 
-      <div>
-        <h2>Поиск по названию:</h2>
-        <div>
-          <input
-            type="text"
-            placeholder="Введите название товара"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-          <button onClick={handleFilterProduct}>Найти</button>
-        </div>
-      </div>
-
-      <button onClick={handleResetFilters}>Сбросить все фильтры</button>
+      <button className="removeButton" onClick={handleResetFilters}>
+        Сбросить все фильтры
+      </button>
       <br />
-
-      {showPagination && (
-        <button onClick={handlePrevPage} disabled={currentPage === 1}>
-          Назад
-        </button>
-      )}
-
-      {renderPaginator()}
-      {showPagination && <button onClick={handleNextPage}>Вперед</button>}
+      <div className="paginator">
+        {" "}
+        {showPagination && (
+          <button onClick={handlePrevPage} disabled={currentPage === 1}>
+            Назад
+          </button>
+        )}
+        {renderPaginator()}
+        {showPagination && <button onClick={handleNextPage}>Вперед</button>}
+      </div>
 
       {loading ? (
         <p>Загрузка товаров...</p>
       ) : (
-        <div className="product-list">
+        <div>
           <ul className="App_block">
-            {filteredProducts && filteredProducts.length > 0 ? (
+            {filteredProducts.length > 0 ? (
               filteredProducts.map((product) => (
                 <li key={product.id} className="App_elem">
-                  <p>{product.product}</p>
-                  <p>{product.brand}</p>
-                  <p>{product.id}</p>
-                  <p>{product.price} ₽</p>
+                  <p className="product">{product.product}</p>
+                  <p className="product_brand">{product.brand}</p>
+                  <p className="product_id">{product.id}</p>
+                  <p className="product_price">{product.price} ₽</p>
                 </li>
               ))
             ) : (
