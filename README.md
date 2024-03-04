@@ -1,6 +1,6 @@
 ## Тестовое задание valantis
 
-#### Ссылка на проект: https://ekaterinatet.github.io/test_app/](https://ekaterinatet.github.io/test_app/)
+#### Ссылка на проект: https://ekaterinatet.github.io/test_app/
 
 ### Stack:
  React, Redux Toolkit, JavaScript, React Hooks, CSS, Responsive Design 
