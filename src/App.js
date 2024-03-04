@@ -1,140 +1,51 @@
 import { useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import "./App.css";
-
-// Функция для выполнения запросов к API
-async function fetchData(action, params = {}) {
-  const password = "Valantis";
-  const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const md5 = require("md5");
-
-  const requestOptions = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json; charset=UTF-8",
-      "X-Auth": md5(`${password}_${timestamp}`),
-    },
-    body: JSON.stringify({ action, params }),
-  };
-
-  try {
-    const response = await fetch(
-      "https://api.valantis.store:41000/",
-      requestOptions
-    );
-    if (!response.ok) {
-      throw new Error(`Ошибка ${response.status}`);
-    }
-    const data = await response.json();
-    return data.result;
-  } catch (error) {
-    console.error("Ошибка при выполнении запроса:", error);
-    // Повторный запрос при ошибке
-    // return fetchData(action, params);
-  }
-}
-// Функция для получения списка ID товаров и лимит
-async function getProductIds(offset = 0, limit = 50) {
-  const ids = await fetchData("get_ids", { offset, limit: limit + 1 }); //на один товар больше на 1ой стр
-  return ids.filter((id, index) => ids.indexOf(id) === index);
-}
-
-// Функция для получения информации о товарах по их ID
-async function getProducts(ids) {
-  if (!ids || ids.length === 0) return null;
-  const params = { ids };
-  return await fetchData("get_items", params);
-}
-
-// Функция для получения доступных полей товаров
-async function getFields(field) {
-  try {
-    const brands = await fetchData("get_fields", { field });
-    if (!brands || brands.length === 0) {
-      return [];
-    }
-    //фильтрую уникал и непустые значения
-    const uniqueBrands = brands.filter((brand) => brand !== null);
-    return Array.from(new Set(uniqueBrands)); //убираю дубли
-  } catch (err) {
-    console.error("Ошибка", err);
-    return [];
-  }
-}
-
-//запрашиваю доступные значения поля brand
-async function fetchBrands() {
-  try {
-    const brands = await getFields("brand");
-    return brands;
-  } catch (err) {
-    console.error("Ошибка при получении брендов", err);
-  }
-}
-//получаю все цены
-async function fetchPrice() {
-  try {
-    const price = await getFields("price");
-    return price;
-  } catch (err) {
-    console.error("Ошибка при получении цен", err);
-    return [];
-  }
-}
-//фильтрация по цене
-async function filterPrice(price) {
-  try {
-    const response = await fetchData("filter", {
-      price,
-    });
-    return response;
-  } catch (err) {
-    console.error("Ошибка при фильтрации", err);
-    return [];
-  }
-}
-
-//получаю все названия
-async function fetchProductName() {
-  try {
-    const product = await getFields("product");
-    return product;
-  } catch (err) {
-    console.error("Ошибка при получении названия", err);
-    return [];
-  }
-}
-//фильтрация по названию
-// async function filterProductName(product) {
-//   try {
-//     const response = await fetchData("filter", {
-//       product,
-//     });
-//     return response;
-//   } catch (err) {
-//     console.error("Ошибка при фильтрации", err);
-//     return [];
-//   }
-// }
+import {
+  getProductIds,
+  getProducts,
+  fetchBrands,
+  fetchPrice,
+  filterPrice,
+  fetchProductName,
+} from "./api";
+import {
+  setAllProducts,
+  setProducts,
+  setFilteredProductsName,
+  setLoading,
+  setSearchQuery,
+} from "./redux/slices/productSlice";
+import {
+  setCurrentPage,
+  setStartPage,
+  setShowPagination,
+} from "./redux/slices/paginationSlice";
+import {
+  setSelectedBrands,
+  setAvailableBrands,
+} from "./redux/slices/brandsSlice";
+import { setValuePrice, setAvailablePrices } from "./redux/slices/priceSlice";
 
 function App() {
-  const [products, setProducts] = useState([]); //все товары
-  const [allProducts, setAllProducts] = useState([]);
-  const [originProducts, setOriginProducts] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [startPage, setStartPage] = useState(1); //начальная стр в пагинации
+  const products = useSelector((state) => state.products.products);
+  const allProducts = useSelector((state) => state.products.allProducts);
+  const loading = useSelector((state) => state.products.loading);
+  const searchQuery = useSelector((state) => state.products.searchQuery); // Состояние для хранения поискового запроса
 
-  const [showPagination, setShowPagination] = useState(true); // Флаг для отображения пагинации
+  const currentPage = useSelector((state) => state.pagination.currentPage);
+  const startPage = useSelector((state) => state.pagination.startPage);
+  const showPagination = useSelector(
+    (state) => state.pagination.showPagination
+  );
 
-  const [selectedBrands, setSelectedBrands] = useState(""); // состояние для избран брендов
-  const [availableBrands, setAvailableBrands] = useState([]); // состояние для доступных брендов
+  const selectedBrands = useSelector((state) => state.brands.selectedBrands); // состояние для избран брендов
+  const availableBrands = useSelector((state) => state.brands.availableBrands); // состояние для доступных брендов
 
-  const [valuePrice, setValuePrice] = useState(""); //цена
-  const [availablePrices, setAvailablePrices] = useState([]); // состояние для доступных цен
+  const valuePrice = useSelector((state) => state.price.valuePrice); //цена
 
-  const [searchQuery, setSearchQuery] = useState(""); // Состояние для хранения поискового запроса
-  const [filteredProductsName, setFilteredProductsName] = useState([]); // Состояние для хранения отфильтрованных товаров
+  const dispatch = useDispatch();
 
-  const [loading, setLoading] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false); //кнопка наверх
 
   const pageCount = 10; //кол-во стр в пагинации
@@ -142,12 +53,12 @@ function App() {
 
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
+      dispatch(setLoading(true));
       try {
         const ids = await getProductIds(0, 9999);
         const productsData = await getProducts(ids);
 
-        // Убираем дубликаты по id
+        // Убираю дубликаты по id
         const uniqueProducts = [];
         const uniqueIds = [];
         productsData.forEach((product) => {
@@ -157,33 +68,32 @@ function App() {
           }
         });
 
-        setAllProducts(uniqueProducts);
-        setProducts(uniqueProducts.slice(0, pageSize));
-        setOriginProducts(uniqueProducts);
+        dispatch(setAllProducts(uniqueProducts));
+        dispatch(setProducts(uniqueProducts.slice(0, pageSize)));
 
-        setLoading(false);
+        dispatch(setLoading(false));
       } catch (err) {
         console.error("Ошибка при загрузке всех товаров", err);
-        setLoading(false);
+        dispatch(setLoading(false));
       }
     };
 
     fetchData();
 
     return () => {};
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        setLoading(true);
+        dispatch(setLoading(true));
         const offset = (currentPage - 1) * pageSize;
         const limit = currentPage === 1 ? pageSize + 1 : pageSize;
 
         const ids = await getProductIds(offset, limit);
         const productsData = await getProducts(ids.slice(0, pageSize));
 
-        // Убираем дубликаты по id
+        // Убираю дубликаты по id
         const unProducts = [];
         const unIds = [];
         productsData.forEach((product) => {
@@ -193,37 +103,37 @@ function App() {
           }
         });
 
-        setProducts(unProducts); //обновляю текущ товары для отображения
+        dispatch(setProducts(unProducts)); //обновляю текущ товары для отображения
 
-        setLoading(false);
+        dispatch(setLoading(false));
       } catch (error) {
         console.error("Ошибка при загрузке товаров:", error);
-        setLoading(false);
+        dispatch(setLoading(false));
       }
     };
     fetchProducts();
-  }, [currentPage]);
+  }, [currentPage, dispatch]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
         const brands = await fetchBrands(); // Загрузка доступных брендов
-        setAvailableBrands(brands);
+        dispatch(setAvailableBrands(brands));
 
         const prices = await fetchPrice(); // Загрузка доступных цен
-        setAvailablePrices(prices); // Сохранение полученных цен в состояние
+        dispatch(setAvailablePrices(prices)); // Сохранение полученных цен в состояние
 
         const name = await fetchProductName(); //загрузка доступных названий
-        setFilteredProductsName(name);
+        dispatch(setFilteredProductsName(name));
 
-        setLoading(false);
+        dispatch(setLoading(false));
       } catch (err) {
         console.error("Ошибка при загрузке данных", err);
-        setLoading(false);
+        dispatch(setLoading(false));
       }
     };
     fetchInitialData();
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -246,28 +156,28 @@ function App() {
     const newPage = currentPage - pageCount;
     if (newStartPage >= 1) {
       //предотвращаю переход в отрицательные значения стр
-      setCurrentPage(newPage);
-      setStartPage(newStartPage);
+      dispatch(setCurrentPage(newPage));
+      dispatch(setStartPage(newStartPage));
     } else {
       //если начал стр меньше 1,то устанавливаю ее 1
-      setCurrentPage(1);
-      setStartPage(1);
+      dispatch(setCurrentPage(1));
+      dispatch(setStartPage(1));
     }
   };
   const handleNextPage = () => {
     const newStartPage = startPage + pageCount;
     const newPage = currentPage + pageCount;
-    setCurrentPage(newPage);
-    setStartPage(newStartPage);
+    dispatch(setCurrentPage(newPage));
+    dispatch(setStartPage(newStartPage));
   };
 
   const handlePageClick = (pageNumber) => {
-    setCurrentPage(pageNumber);
+    dispatch(setCurrentPage(pageNumber));
   };
 
   const renderPaginator = () => {
     if (!showPagination) {
-      return null; // Если пагинация скрыта, не отображаем её
+      return null; // Если пагинация скрыта, не отображаю её
     }
     const pagination = [];
     const endPage = startPage + pageCount - 1;
@@ -292,7 +202,7 @@ function App() {
 
   const handleBrandChange = async (event) => {
     const selectedBrand = event.target.value;
-    setSelectedBrands(selectedBrand);
+    dispatch(setSelectedBrands(selectedBrand));
     // Фильтрация товаров по бренду и названию
     const filteredByBrandAndName = allProducts.filter(
       (product) =>
@@ -311,20 +221,20 @@ function App() {
             (filteredProduct) => filteredProduct.id === product.id
           )
         );
-        setProducts(productsToShow);
+        dispatch(setProducts(productsToShow));
       } else {
         console.warn("Цена должна быть числом");
       }
     } else {
       // Если цена не выбрана, применяю только фильтрацию по бренду и названию
-      setProducts(filteredByBrandAndName);
+      dispatch(setProducts(filteredByBrandAndName));
     }
-    setShowPagination(false);
+    dispatch(setShowPagination(false));
   };
 
   const handleFilterPrice = async () => {
     try {
-      setLoading(true);
+      dispatch(setLoading(true));
       const price = parseFloat(valuePrice);
       if (!isNaN(price)) {
         // Фильтрую товары по цене
@@ -335,13 +245,13 @@ function App() {
           (product) => selectedBrands === "" || product.brand === selectedBrands
         );
         // Устанавливаю отфильтрованные товары
-        setProducts(productsToShow);
+        dispatch(setProducts(productsToShow));
       }
-      setLoading(false);
-      setShowPagination(false); // Скрыть пагинацию
+      dispatch(setLoading(false));
+      dispatch(setShowPagination(false)); // Скрыть пагинацию
     } catch (error) {
       console.error("Ошибка при фильтрации товаров по цене:", error);
-      setLoading(false);
+      dispatch(setLoading(false));
     }
   };
 
@@ -366,18 +276,18 @@ function App() {
         console.warn("Цена должна быть числом");
       }
     }
-    setProducts(filtered);
-    setShowPagination(false); // Скрыть пагинацию
+    dispatch(setProducts(filtered));
+    dispatch(setShowPagination(false)); // Скрыть пагинацию
   };
 
   const handleResetFilters = () => {
-    setSelectedBrands(""); // Сброс выбранного бренда
-    setValuePrice(""); // Сброс выбранной цены
-    setSearchQuery(""); //сброс названия
-    setShowPagination(true); // Вернуть пагинацию
-    setCurrentPage(1); // Вернуться на первую страницу
+    dispatch(setSelectedBrands("")); // Сброс выбранного бренда
+    dispatch(setValuePrice("")); // Сброс выбранной цены
+    dispatch(setSearchQuery("")); //сброс названия
+    dispatch(setShowPagination(true)); // Вернуть пагинацию
+    dispatch(setCurrentPage(1)); // Вернуться на первую страницу
     // Обновить список товаров на странице в соответствии с первоначальными данными
-    setProducts(allProducts.slice(0, pageSize));
+    dispatch(setProducts(allProducts.slice(0, pageSize)));
   };
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" }); // Прокрутка страницы вверх
@@ -419,7 +329,7 @@ function App() {
             <input
               className="input_price"
               onChange={(event) => {
-                setValuePrice(event.target.value);
+                dispatch(setValuePrice(event.target.value));
               }}
               type="number"
               value={valuePrice}
@@ -436,7 +346,7 @@ function App() {
               type="text"
               placeholder="Введите название товара"
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => dispatch(setSearchQuery(event.target.value))}
             />
             <button onClick={handleFilterProduct}>Применить</button>
           </div>
